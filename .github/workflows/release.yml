@@ -140,11 +140,24 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           ditto -c -k --keepParent target/${{ matrix.target }}/release/pentest-connector $RUNNER_TEMP/pentest-connector.zip
-          xcrun notarytool submit $RUNNER_TEMP/pentest-connector.zip \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
+          for attempt in 1 2 3; do
+            echo "Notarization attempt $attempt..."
+            if xcrun notarytool submit $RUNNER_TEMP/pentest-connector.zip \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait --timeout 30m; then
+              echo "Notarization succeeded."
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Notarization failed, retrying in 30s..."
+              sleep 30
+            else
+              echo "Notarization failed after $attempt attempts."
+              exit 1
+            fi
+          done
 
       - name: Package
         run: |
@@ -403,11 +416,24 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           ditto -c -k --keepParent target/${{ matrix.target }}/release/pentest-agent $RUNNER_TEMP/pentest-agent.zip
-          xcrun notarytool submit $RUNNER_TEMP/pentest-agent.zip \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
+          for attempt in 1 2 3; do
+            echo "Notarization attempt $attempt..."
+            if xcrun notarytool submit $RUNNER_TEMP/pentest-agent.zip \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait --timeout 30m; then
+              echo "Notarization succeeded."
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Notarization failed, retrying in 30s..."
+              sleep 30
+            else
+              echo "Notarization failed after $attempt attempts."
+              exit 1
+            fi
+          done
 
       - name: Package
         run: |
