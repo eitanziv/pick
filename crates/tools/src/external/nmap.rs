@@ -8,6 +8,7 @@ use pentest_core::error::Result;
 use pentest_core::tools::{
     execute_timed, ParamType, PentestTool, Platform, ToolContext, ToolParam, ToolResult, ToolSchema,
 };
+use pentest_core::validation::{validate_port_spec, validate_target};
 use pentest_platform::{get_platform, CommandExec};
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -111,13 +112,16 @@ impl PentestTool for NmapTool {
             // Ensure nmap is installed
             ensure_tool_installed(&platform, "nmap", "nmap").await?;
 
-            // Extract parameters
+            // Extract and validate target parameter
             let target = param_str_or(&params, "target", "");
             if target.is_empty() {
                 return Err(pentest_core::error::Error::InvalidParams(
                     "target parameter is required".into(),
                 ));
             }
+
+            // Validate target format (IP, hostname, or CIDR)
+            let target = validate_target(&target)?;
 
             let scan_type = param_str_or(&params, "scan_type", "connect");
             let ports = param_str_or(&params, "ports", "top1000");
@@ -164,7 +168,11 @@ impl PentestTool for NmapTool {
                     "top100" => builder = builder.arg("--top-ports", "100"),
                     "top1000" => {} // Default, no flag needed
                     "all" => builder = builder.flag("-p-"),
-                    _ => builder = builder.arg("-p", &ports),
+                    _ => {
+                        // Validate custom port specification
+                        let validated_ports = validate_port_spec(&ports)?;
+                        builder = builder.arg("-p", &validated_ports);
+                    }
                 }
             }
 
@@ -191,13 +199,31 @@ impl PentestTool for NmapTool {
             // NSE scripts - validate before running
             if let Some(scripts) = param_str_opt(&params, "scripts") {
                 if !scripts.is_empty() {
-                    // Validate scripts exist before running nmap
+                    // First, validate script names to prevent path injection
+                    // Allow: alphanumeric, hyphens, underscores, commas, wildcards (*?), dots
+                    // Block: slashes (path separators), shell metacharacters
+                    for script in scripts.split(',') {
+                        let script = script.trim();
+                        if script.is_empty() {
+                            continue;
+                        }
+                        if !script.chars().all(|c| {
+                            c.is_alphanumeric() || c == '-' || c == '_' || c == '*' || c == '?' || c == '.'
+                        }) {
+                            return Err(pentest_core::error::Error::InvalidParams(
+                                format!("Invalid NSE script name '{}' - only alphanumeric, hyphens, underscores, wildcards, and dots allowed", script)
+                            ));
+                        }
+                    }
+
+                    // Then validate scripts exist before running nmap
                     if let Err(invalid) = validate_nse_scripts(&platform, &scripts).await {
                         return Err(pentest_core::error::Error::InvalidParams(format!(
                             "Invalid NSE script(s): {}. Use 'nmap --script-help <pattern>' to list available scripts.",
                             invalid
                         )));
                     }
+
                     builder = builder.arg("--script", &scripts);
                 }
             }
