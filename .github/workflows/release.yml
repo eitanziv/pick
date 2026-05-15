@@ -95,11 +95,15 @@ jobs:
           path: dist/pentest-connector-windows-x86_64.zip
 
   build-desktop-macos:
-    name: Desktop (macOS)
-    runs-on: macos-latest
+    name: Desktop (macOS ${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x86_64' }})
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        target: [x86_64-apple-darwin, aarch64-apple-darwin]
+        include:
+          - os: macos-13
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -375,10 +379,14 @@ jobs:
 
   build-headless-macos:
     name: Headless (macOS ${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x86_64' }})
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        target: [x86_64-apple-darwin, aarch64-apple-darwin]
+        include:
+          - os: macos-13
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
