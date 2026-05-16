@@ -103,12 +103,12 @@ impl Default for ConnectorConfig {
             instance_id: Uuid::new_v4().to_string(),
             connector_name: default_connector_name(),
             display_name: None,
-            aggression_level: AggressionLevel::default(),
             tags: vec![],
             use_tls: true,
             reconnect_enabled: true,
             reconnect_delay_ms: 5000,
             max_backoff_delay_ms: 60000,
+            aggression_level: AggressionLevel::default(),
         }
     }
 }
@@ -366,6 +366,11 @@ pub fn load_connector_config(args: &[String]) -> ConfigLoadResult {
     if let Ok(name) = std::env::var("CONNECTOR_NAME") {
         config.connector_name = name;
     }
+    if let Ok(aggression) = std::env::var("AGGRESSION_LEVEL") {
+        if let Ok(level) = aggression.parse::<crate::aggression::AggressionLevel>() {
+            config.aggression_level = level;
+        }
+    }
 
     // CLI args override everything
     let mut i = 1;
@@ -397,6 +402,29 @@ pub fn load_connector_config(args: &[String]) -> ConfigLoadResult {
             }
             "--no-tls" => {
                 config.use_tls = false;
+            }
+            "--aggression" | "-a" => {
+                i += 1;
+                if i < args.len() {
+                    match args[i].parse::<crate::aggression::AggressionLevel>() {
+                        Ok(level) => {
+                            // Display cost warning if expensive mode selected
+                            if let Some(warning) = level.cost_warning() {
+                                use crate::aggression::WarnLevel;
+                                let prefix = match warning.level {
+                                    WarnLevel::Info => "ℹ️ ",
+                                    WarnLevel::Warning => "⚠️  ",
+                                };
+                                eprintln!("{}{}", prefix, warning.message);
+                                eprintln!();
+                            }
+                            config.aggression_level = level;
+                        }
+                        Err(e) => {
+                            return ConfigLoadResult::Error(e);
+                        }
+                    }
+                }
             }
             "--help" | "-h" => {
                 return ConfigLoadResult::Help;
