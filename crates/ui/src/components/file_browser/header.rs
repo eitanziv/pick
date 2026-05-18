@@ -13,10 +13,8 @@ pub(super) fn Header(current_path: String, on_navigate: EventHandler<String>) ->
 
     rsx! {
         nav { class: "breadcrumbs",
-            a {
-                href: "#",
-                onclick: move |e| {
-                    e.prevent_default();
+            button {
+                onclick: move |_| {
                     on_navigate.call(String::new());
                 },
                 "Files"
@@ -26,10 +24,8 @@ pub(super) fn Header(current_path: String, on_navigate: EventHandler<String>) ->
                 {
                     let partial: String = parts[..=i].join("/");
                     rsx! {
-                        a {
-                            href: "#",
-                            onclick: move |e| {
-                                e.prevent_default();
+                        button {
+                            onclick: move |_| {
                                 on_navigate.call(partial.clone());
                             },
                             "{part}"

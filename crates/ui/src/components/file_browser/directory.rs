@@ -71,11 +71,9 @@ pub(super) fn DirectoryListing(props: DirectoryListingProps) -> Element {
         div { class: "directory-listing",
             // Parent link
             if let Some(parent) = parent_path {
-                a {
+                button {
                     class: "parent-link",
-                    href: "#",
-                    onclick: move |e| {
-                        e.prevent_default();
+                    onclick: move |_| {
                         on_navigate.call(FileEntry {
                             name: "..".to_string(),
                             path: parent.clone(),
