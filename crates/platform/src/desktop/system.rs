@@ -391,10 +391,10 @@ async fn scan_specific_interface(interface: &str) -> Result<Vec<WifiNetwork>> {
 ///
 /// # Arguments
 /// * `interface` - Optional WiFi interface to scan (e.g., "wlan1"). If None, uses auto-detect.
-pub async fn get_wifi_networks(interface: Option<String>) -> Result<Vec<WifiNetwork>> {
+pub async fn get_wifi_networks(_interface: Option<String>) -> Result<Vec<WifiNetwork>> {
     // If interface specified, use iw command (Linux only)
     #[cfg(target_os = "linux")]
-    if let Some(iface) = interface {
+    if let Some(iface) = _interface {
         return scan_specific_interface(&iface).await;
     }
 
