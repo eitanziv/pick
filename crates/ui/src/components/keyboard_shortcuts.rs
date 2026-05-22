@@ -48,7 +48,7 @@ pub struct KeyboardShortcutsProps {
 /// | `1`-`6`          | Navigate to page          |
 /// | `c`              | Toggle chat panel         |
 /// | `Esc`            | Close modal / panel       |
-/// | `Ctrl+Shift+1-8` | Switch theme directly     |
+/// | `Ctrl+Shift+1-9` | Switch theme directly     |
 /// | Konami code      | Activate easter egg       |
 /// Konami code sequence: ↑ ↑ ↓ ↓ ← → ← → B A
 const KONAMI_SEQUENCE: &[&str] = &[
@@ -142,19 +142,20 @@ pub fn KeyboardShortcuts(props: KeyboardShortcutsProps) -> Element {
                     }
                 }
 
-                // --- Ctrl+Shift+1-8: Theme switching ---
+                // --- Ctrl+Shift+1-9: Theme switching ---
                 if ctrl_key && shift_key {
                     if let Some(on_theme_change) = &props.on_theme_change {
                         let theme_opt = match key {
                             Key::Character(ref c) => match c.as_str() {
-                                "1" => Some(Theme::Dark),
-                                "2" => Some(Theme::Light),
-                                "3" => Some(Theme::Dracula),
-                                "4" => Some(Theme::Gruvbox),
-                                "5" => Some(Theme::TokyoNight),
-                                "6" => Some(Theme::Matrix),
-                                "7" => Some(Theme::Cyberpunk),
-                                "8" => Some(Theme::Nord),
+                                "1" => Some(Theme::Strike48),
+                                "2" => Some(Theme::Dark),
+                                "3" => Some(Theme::Light),
+                                "4" => Some(Theme::Dracula),
+                                "5" => Some(Theme::Gruvbox),
+                                "6" => Some(Theme::TokyoNight),
+                                "7" => Some(Theme::Matrix),
+                                "8" => Some(Theme::Cyberpunk),
+                                "9" => Some(Theme::Nord),
                                 _ => None,
                             },
                             _ => None,
