@@ -108,66 +108,109 @@ impl LiveViewConnector {
             Some(self.config.instance_id.clone()),
         );
 
-        // Register public key with OTT
-        match ott_provider
-            .register_public_key_with_ott_data(
-                &creds.ott,
-                ott_api_url,
-                &creds.register_url,
-                &connector_type,
-                Some(&self.config.instance_id),
-            )
-            .await
-        {
-            Ok(response) => {
+        // Register public key with OTT (with retry for transient errors)
+        const MAX_RETRIES: u32 = 3;
+        let mut last_error = None;
+
+        for attempt in 1..=MAX_RETRIES {
+            if attempt > 1 {
+                let backoff_ms = 1000 * (1 << (attempt - 2)); // 1s, 2s, 4s
                 tracing::info!(
-                    "Registered public key with OTT. Client ID: {}",
-                    response.client_id
+                    "OTT registration attempt {} failed, retrying in {}ms",
+                    attempt - 1,
+                    backoff_ms
                 );
-                self.send_event(ConnectorEvent::Log(TerminalLine::success(format!(
-                    "Key registered: {}",
-                    response.client_id
+                self.send_event(ConnectorEvent::Log(TerminalLine::info(format!(
+                    "Retrying OTT registration (attempt {}/{}) in {}ms...",
+                    attempt, MAX_RETRIES, backoff_ms
                 ))));
+                tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
+            }
 
-                // Get JWT using private_key_jwt
-                match ott_provider.get_token().await {
-                    Ok(jwt_token) => {
-                        tracing::info!("Obtained JWT, will reconnect with JWT authentication");
-                        self.send_event(ConnectorEvent::Log(TerminalLine::success(
-                            "JWT obtained, reconnecting...",
-                        )));
+            match ott_provider
+                .register_public_key_with_ott_data(
+                    &creds.ott,
+                    ott_api_url,
+                    &creds.register_url,
+                    &connector_type,
+                    Some(&self.config.instance_id),
+                )
+                .await
+            {
+                Ok(response) => {
+                    tracing::info!(
+                        "Registered public key with OTT (attempt {}). Client ID: {}",
+                        attempt,
+                        response.client_id
+                    );
+                    self.send_event(ConnectorEvent::Log(TerminalLine::success(format!(
+                        "Key registered: {}",
+                        response.client_id
+                    ))));
 
-                        // Update config with new JWT
-                        self.config.auth_token = jwt_token.clone();
+                    // Get JWT using private_key_jwt
+                    match ott_provider.get_token().await {
+                        Ok(jwt_token) => {
+                            tracing::info!("Obtained JWT, will reconnect with JWT authentication");
+                            self.send_event(ConnectorEvent::Log(TerminalLine::success(
+                                "JWT obtained, reconnecting...",
+                            )));
 
-                        // Notify main app to save credentials
-                        self.send_event(ConnectorEvent::CredentialsUpdated {
-                            auth_token: jwt_token,
-                            api_url: self.derive_matrix_api_url(),
-                        });
+                            // Update config with new JWT
+                            self.config.auth_token = jwt_token.clone();
 
-                        // Store OTT provider for token refresh
-                        *self.ott_provider.write().await = Some(ott_provider);
+                            // Notify main app to save credentials
+                            self.send_event(ConnectorEvent::CredentialsUpdated {
+                                auth_token: jwt_token,
+                                api_url: self.derive_matrix_api_url(),
+                            });
 
-                        // Set flag to trigger reconnection
-                        self.reconnect_with_jwt.store(true, Ordering::SeqCst);
+                            // Store OTT provider for token refresh
+                            *self.ott_provider.write().await = Some(ott_provider);
+
+                            // Set flag to trigger reconnection
+                            self.reconnect_with_jwt.store(true, Ordering::SeqCst);
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to get JWT: {}", e);
+                            self.send_event(ConnectorEvent::Log(TerminalLine::error(format!(
+                                "JWT exchange failed: {}",
+                                e
+                            ))));
+                        }
                     }
-                    Err(e) => {
-                        tracing::error!("Failed to get JWT: {}", e);
-                        self.send_event(ConnectorEvent::Log(TerminalLine::error(format!(
-                            "JWT exchange failed: {}",
-                            e
-                        ))));
+
+                    // Success - exit retry loop
+                    return;
+                }
+                Err(e) => {
+                    tracing::warn!("OTT registration attempt {} failed: {}", attempt, e);
+                    last_error = Some(e);
+
+                    // Don't retry on last attempt
+                    if attempt == MAX_RETRIES {
+                        break;
                     }
                 }
             }
-            Err(e) => {
-                tracing::error!("Failed to register public key with OTT: {}", e);
-                self.send_event(ConnectorEvent::Log(TerminalLine::error(format!(
-                    "OTT registration failed: {}",
-                    e
-                ))));
-            }
+        }
+
+        // All retries exhausted - report failure and return to waiting state
+        if let Some(e) = last_error {
+            tracing::error!(
+                "Failed to register public key with OTT after {} attempts: {}",
+                MAX_RETRIES,
+                e
+            );
+            self.send_event(ConnectorEvent::Log(TerminalLine::error(format!(
+                "OTT registration failed after {} attempts: {}. \
+                 Approval may need to be re-issued in Prospector Studio.",
+                MAX_RETRIES, e
+            ))));
+            // Return to waiting state - admin may need to re-approve
+            self.send_event(ConnectorEvent::StepChanged(
+                ConnectingStep::WaitingForApproval,
+            ));
         }
     }
 }
