@@ -59,11 +59,9 @@ pub(super) fn ImageViewer(props: ImageViewerProps) -> Element {
         div { class: "image-viewer",
             // Compact toolbar
             div { class: "file-toolbar",
-                a {
+                button {
                     class: "file-toolbar-back",
-                    href: "#",
-                    onclick: move |e| {
-                        e.prevent_default();
+                    onclick: move |_| {
                         on_back.call(());
                     },
                     "\u{2190}"
