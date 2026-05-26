@@ -19,6 +19,7 @@ pub enum ShellMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Theme {
     #[default]
+    Strike48,
     Dark,
     Light,
     Dracula,

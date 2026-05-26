@@ -12,8 +12,23 @@ pub fn generate_theme_css(theme: Theme, radius: BorderRadius, density: Density) 
     let radius_value = get_radius_value(radius);
     let spacing = get_density_spacing(density);
 
+    // IBM Plex fonts for Strike48 theme
+    let (font_import, font_sans, font_mono) = if theme == Theme::Strike48 {
+        (
+            "@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');\n",
+            "'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji'",
+            "'IBM Plex Mono', ui-monospace, monospace",
+        )
+    } else {
+        (
+            "",
+            "ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji'",
+            "\"Cascadia Code\", \"Fira Code\", \"Consolas\", \"Courier New\", monospace",
+        )
+    };
+
     format!(
-        r#"
+        r#"{}
         :root {{
             /* Theme: {:?} */
             color-scheme: {};
@@ -73,12 +88,13 @@ pub fn generate_theme_css(theme: Theme, radius: BorderRadius, density: Density) 
             --info: {};
 
             /* Typography tokens */
-            --font-sans: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
-            --font-heading: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
-            --font-mono: "Cascadia Code", "Fira Code", "Consolas", "Courier New", monospace;
+            --font-sans: {};
+            --font-heading: {};
+            --font-mono: {};
             --font-size: {}px;
         }}
         "#,
+        font_import,
         theme,
         colors.color_scheme,
         colors.background,
@@ -119,6 +135,9 @@ pub fn generate_theme_css(theme: Theme, radius: BorderRadius, density: Density) 
         colors.success,
         colors.warning,
         colors.info,
+        font_sans,
+        font_sans, // font-heading same as font-sans
+        font_mono,
         spacing.font_size,
     ) + BASE_COMPONENT_STYLES
 }
@@ -734,6 +753,7 @@ struct DensitySpacing {
 
 fn get_theme_colors(theme: Theme) -> ThemeColors {
     match theme {
+        Theme::Strike48 => strike48_theme(),
         Theme::Dark => dark_theme(),
         Theme::Light => light_theme(),
         Theme::Dracula => dracula_theme(),
@@ -785,6 +805,44 @@ fn get_density_spacing(density: Density) -> DensitySpacing {
 }
 
 // Theme Color Palettes
+
+fn strike48_theme() -> ThemeColors {
+    ThemeColors {
+        color_scheme: "dark",
+        background: "oklch(0.078 0.012 258)", // ink-900 #07090d
+        foreground: "oklch(0.855 0.020 260)", // ink-200 #cdd2e2
+        card: "oklch(0.115 0.018 258)",       // ink-800 #0f1320
+        popover: "oklch(0.115 0.018 258)",    // ink-800
+        primary: "oklch(0.575 0.145 250)",    // brand-500 #3978D5
+        primary_foreground: "oklch(0.985 0 0)", // white
+        secondary: "oklch(0.175 0.022 258)",  // ink-700 #1a2233
+        secondary_foreground: "oklch(0.855 0.020 260)", // ink-200
+        muted: "oklch(0.175 0.022 258)",      // ink-700
+        muted_foreground: "oklch(0.650 0.015 260)", // ink-400
+        accent: "oklch(0.720 0.120 250)",     // brand-300 #7aa9ff
+        accent_foreground: "oklch(0.078 0.012 258)", // ink-900
+        destructive: "oklch(0.577 0.245 27)", // status-critical #ef4444
+        border: "oklch(0.175 0.022 258)",     // ink-700 #1a2233
+        input: "oklch(0.115 0.018 258)",      // ink-800
+        ring: "oklch(0.575 0.145 250)",       // brand-500
+        sidebar: "oklch(0.095 0.015 258)",    // ink-850 #0b0e14
+        sidebar_foreground: "oklch(0.855 0.020 260)", // ink-200
+        sidebar_primary: "oklch(0.575 0.145 250)", // brand-500
+        sidebar_primary_foreground: "oklch(0.985 0 0)",
+        sidebar_accent: "oklch(0.175 0.022 258)", // ink-700
+        sidebar_accent_foreground: "oklch(0.855 0.020 260)",
+        sidebar_border: "oklch(0.175 0.022 258)", // ink-700
+        sidebar_ring: "oklch(0.575 0.145 250)",   // brand-500
+        chart_1: "oklch(0.575 0.145 250)",        // brand-500
+        chart_2: "oklch(0.650 0.200 145)",        // status-resolved #10b981
+        chart_3: "oklch(0.750 0.180 85)",         // status-in-progress #eab308
+        chart_4: "oklch(0.720 0.120 250)",        // brand-300
+        chart_5: "oklch(0.577 0.245 27)",         // status-critical
+        success: "oklch(0.650 0.200 145)",        // status-resolved #10b981
+        warning: "oklch(0.750 0.180 85)",         // status-in-progress #eab308
+        info: "oklch(0.575 0.145 250)",           // brand-500
+    }
+}
 
 fn dark_theme() -> ThemeColors {
     ThemeColors {

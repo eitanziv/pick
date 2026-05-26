@@ -433,6 +433,7 @@ pub fn SettingsPage(
                                 onchange: move |e| {
                                     let theme_str = e.value();
                                     let new_theme = match theme_str.as_str() {
+                                        "Strike48" => Theme::Strike48,
                                         "Dark" => Theme::Dark,
                                         "Light" => Theme::Light,
                                         "Dracula" => Theme::Dracula,
@@ -441,10 +442,11 @@ pub fn SettingsPage(
                                         "Matrix" => Theme::Matrix,
                                         "Cyberpunk" => Theme::Cyberpunk,
                                         "Nord" => Theme::Nord,
-                                        _ => Theme::Dark,
+                                        _ => Theme::Strike48,
                                     };
                                     on_theme_change.call(new_theme);
                                 },
+                                option { value: "Strike48", "Strike48" }
                                 option { value: "Dark", "Dark" }
                                 option { value: "Light", "Light" }
                                 option { value: "Dracula", "Dracula" }
@@ -460,6 +462,7 @@ pub fn SettingsPage(
                                 title: "Random theme",
                                 onclick: move |_| {
                                     let all_themes = [
+                                        Theme::Strike48,
                                         Theme::Dark,
                                         Theme::Light,
                                         Theme::Dracula,
