@@ -106,6 +106,15 @@ pub async fn poll_and_update(
     let mut saw_error = false;
 
     for _attempt in 0..MAX_POLL_ATTEMPTS {
+        // Exit immediately if user switched away from this conversation
+        if !is_active(&active_conversation_id, &conv_id) {
+            tracing::info!(
+                "[ChatPoll] Conversation {} no longer active, stopping poll",
+                conv_id
+            );
+            return;
+        }
+
         match client.get_conversation(&conv_id).await {
             Ok(state) => {
                 let done = state.agent_status.is_terminal();
@@ -139,7 +148,23 @@ pub async fn poll_and_update(
                     agent_status_text.set(status_label.to_string());
 
                     if !state.messages.is_empty() {
-                        messages.set(state.messages.clone());
+                        // Keep local user message at front if server hasn't caught up
+                        let local_msgs: Vec<ChatMessage> = messages
+                            .peek()
+                            .iter()
+                            .filter(|m| m.id.starts_with("local-"))
+                            .cloned()
+                            .collect();
+                        let mut final_msgs = state.messages.clone();
+                        for local_msg in &local_msgs {
+                            let server_has_it = final_msgs
+                                .iter()
+                                .any(|s| s.sender_type == "USER" && s.text == local_msg.text);
+                            if !server_has_it {
+                                final_msgs.insert(0, local_msg.clone());
+                            }
+                        }
+                        messages.set(final_msgs);
                     }
 
                     // The agent backend hit an error. Cross-reference the
@@ -156,7 +181,6 @@ pub async fn poll_and_update(
                     }
 
                     if done && has_agent_msg {
-                        messages.set(state.messages);
                         agent_thinking.set(false);
                         agent_status_text.set(String::new());
                         return;

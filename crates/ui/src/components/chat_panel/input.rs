@@ -36,6 +36,18 @@ pub fn ChatInput(props: ChatInputProps) -> Element {
     let disabled = is_sending() || agent_thinking();
     let on_send = props.on_send;
 
+    // Re-focus the textarea when agent finishes (disabled → enabled)
+    use_effect(move || {
+        if !disabled {
+            spawn(async move {
+                let _ = document::eval(
+                    "var el=document.querySelector('.chat-textarea');if(el){el.focus();}",
+                )
+                .await;
+            });
+        }
+    });
+
     // Long-lived JS↔Rust send bridge. The eval installs document-level
     // delegated listeners (idempotent — see utils.js) and parks awaiting
     // a never-resolved promise so `dioxus.send` stays callable. Each call

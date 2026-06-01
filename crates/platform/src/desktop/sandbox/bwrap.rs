@@ -10,52 +10,9 @@ use std::process::Stdio;
 use std::time::{Duration, Instant};
 use tokio::process::Command;
 
-/// Subordinate UID/GID range for multi-uid mapping
-#[derive(Debug, Clone, Copy)]
-struct SubIdRange {
-    start: u32,
-    count: u32,
-}
-
 /// Bubblewrap executor for Linux namespace-based sandboxing
 pub struct BwrapExecutor {
     config: SandboxConfig,
-}
-
-/// Get subordinate UID range from /etc/subuid for current user
-async fn get_subuid_range() -> Option<SubIdRange> {
-    let username = std::env::var("USER").ok()?;
-    let content = tokio::fs::read_to_string("/etc/subuid").await.ok()?;
-
-    for line in content.lines() {
-        if let Some(range) = line.strip_prefix(&format!("{}:", username)) {
-            let parts: Vec<&str> = range.split(':').collect();
-            if parts.len() == 2 {
-                let start = parts[0].parse::<u32>().ok()?;
-                let count = parts[1].parse::<u32>().ok()?;
-                return Some(SubIdRange { start, count });
-            }
-        }
-    }
-    None
-}
-
-/// Get subordinate GID range from /etc/subgid for current user
-async fn get_subgid_range() -> Option<SubIdRange> {
-    let username = std::env::var("USER").ok()?;
-    let content = tokio::fs::read_to_string("/etc/subgid").await.ok()?;
-
-    for line in content.lines() {
-        if let Some(range) = line.strip_prefix(&format!("{}:", username)) {
-            let parts: Vec<&str> = range.split(':').collect();
-            if parts.len() == 2 {
-                let start = parts[0].parse::<u32>().ok()?;
-                let count = parts[1].parse::<u32>().ok()?;
-                return Some(SubIdRange { start, count });
-            }
-        }
-    }
-    None
 }
 
 impl BwrapExecutor {
@@ -133,53 +90,33 @@ impl BwrapExecutor {
 
         let start = Instant::now();
 
-        // Check if we can use multi-uid mapping
-        let subuid_range = get_subuid_range().await;
-        let subgid_range = get_subgid_range().await;
-        let use_multi_mapping = subuid_range.is_some() && subgid_range.is_some();
+        // Check if we're running as real root (sudo) — skip user namespace, add capabilities
+        let is_root = std::process::Command::new("id")
+            .arg("-u")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "0")
+            .unwrap_or(false);
 
-        if use_multi_mapping {
-            tracing::debug!("Using multi-UID mapping with unshare for bwrap sandbox");
-        } else {
-            tracing::debug!("Using single-UID mapping for bwrap sandbox (no /etc/subuid support)");
-        }
-
-        // Get host uid/gid using shell commands
-        let host_uid = if let Ok(output) = Command::new("id").arg("-u").output().await {
-            String::from_utf8_lossy(&output.stdout).trim().to_string()
-        } else {
-            "1000".to_string() // fallback
-        };
-        let host_gid = if let Ok(output) = Command::new("id").arg("-g").output().await {
-            String::from_utf8_lossy(&output.stdout).trim().to_string()
-        } else {
-            "1000".to_string() // fallback
-        };
-
-        // Build bwrap arguments (same for both modes)
         let mut bwrap_args = vec![
-            // Mount rootfs writable (we're root inside the sandbox, should be able to write anywhere)
             "--bind".to_string(),
             rootfs.to_string_lossy().to_string(),
             "/".to_string(),
-            // Bind necessary system directories
             "--dev".to_string(),
             "/dev".to_string(),
             "--proc".to_string(),
             "/proc".to_string(),
-            // DNS resolution
             "--ro-bind".to_string(),
             "/etc/resolv.conf".to_string(),
             "/etc/resolv.conf".to_string(),
         ];
 
-        // User namespace setup (different for single vs multi-uid mapping)
-        if use_multi_mapping {
-            // For multi-uid: inherit the user namespace created by unshare
-            bwrap_args.push("--userns".to_string());
-            bwrap_args.push("0".to_string());
+        if is_root {
+            // Real root: grant all capabilities for raw sockets etc.
+            bwrap_args.push("--cap-add".to_string());
+            bwrap_args.push("ALL".to_string());
+            tracing::info!("[bwrap::execute] Running as root with --cap-add ALL");
         } else {
-            // For single-uid: create user namespace with single mapping
+            // Unprivileged: use user namespace to fake root
             bwrap_args.push("--unshare-user".to_string());
             bwrap_args.push("--uid".to_string());
             bwrap_args.push("0".to_string());
@@ -187,10 +124,7 @@ impl BwrapExecutor {
             bwrap_args.push("0".to_string());
         }
 
-        // Note: We don't use --cap-add here because it doesn't work with user namespaces.
-        // Instead, we set file capabilities on tools (cap_net_raw+eip) during rootfs setup.
-
-        // Network access (full host network for pentest tools)
+        // Network access
         if self.config.network_access {
             bwrap_args.push("--share-net".to_string());
         } else {
@@ -215,7 +149,6 @@ impl BwrapExecutor {
             bwrap_args.push("/root".to_string());
         }
 
-        // Die when parent dies
         bwrap_args.push("--die-with-parent".to_string());
 
         // Set environment variables
@@ -230,28 +163,13 @@ impl BwrapExecutor {
         bwrap_args.push("-c".to_string());
         bwrap_args.push(cmd.to_string());
 
-        // Build final command (either unshare + bwrap or just bwrap)
-        let mut command = if use_multi_mapping {
-            let subuid = subuid_range.unwrap();
-            let subgid = subgid_range.unwrap();
+        tracing::info!(
+            "[bwrap::execute] inner cmd passed to /bin/bash -c: {:?}",
+            cmd
+        );
 
-            // Use unshare to create user namespace with multi-uid mapping
-            let mut cmd = Command::new("unshare");
-            cmd.arg("-U")
-                .arg("--keep-caps")
-                .arg(format!("--map-users=0:{}:1", &host_uid))
-                .arg(format!("--map-users=1:{}:{}", subuid.start, subuid.count))
-                .arg(format!("--map-groups=0:{}:1", &host_gid))
-                .arg(format!("--map-groups=1:{}:{}", subgid.start, subgid.count))
-                .arg("bwrap")
-                .args(&bwrap_args);
-            cmd
-        } else {
-            // Just use bwrap directly with single-uid mapping
-            let mut cmd = Command::new("bwrap");
-            cmd.args(&bwrap_args);
-            cmd
-        };
+        let mut command = Command::new("bwrap");
+        command.args(&bwrap_args);
 
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
 
@@ -261,6 +179,14 @@ impl BwrapExecutor {
         match tokio::time::timeout(timeout, crate::desktop::wait_for_child_output(child)).await {
             Ok(result) => {
                 let (stdout, stderr, exit_code) = result?;
+                tracing::info!(
+                    "[bwrap::execute] exit_code={} stdout_len={} stderr_len={} stdout={:?} stderr={:?}",
+                    exit_code,
+                    stdout.len(),
+                    stderr.len(),
+                    &stdout[..stdout.len().min(500)],
+                    &stderr[..stderr.len().min(500)],
+                );
                 Ok(CommandResult::success(
                     stdout,
                     stderr,

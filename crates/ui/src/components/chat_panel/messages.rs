@@ -107,9 +107,19 @@ pub fn MessageList(props: MessageListProps) -> Element {
                     }
                 }
 
-                // Message bubbles
-                for msg in messages.read().iter() {
-                    {render_message(msg, &mut expanded_tools)}
+                // Message bubbles (collapse sender label for consecutive same-sender)
+                {
+                    let msgs = messages.read();
+                    let mut prev_sender: Option<String> = None;
+                    rsx! {
+                        for msg in msgs.iter() {
+                            {
+                                let show_sender = prev_sender.as_ref() != Some(&msg.sender_name);
+                                prev_sender = Some(msg.sender_name.clone());
+                                render_message(msg, &mut expanded_tools, show_sender)
+                            }
+                        }
+                    }
                 }
 
                 // Next Steps action buttons (context-sensitive)
@@ -120,7 +130,7 @@ pub fn MessageList(props: MessageListProps) -> Element {
                     }
                 }
 
-                // Thinking indicator
+                // Thinking indicator (standard)
                 if agent_thinking() {
                     div { class: "chat-bubble chat-bubble-agent chat-thinking",
                         div { class: "chat-bubble-sender",

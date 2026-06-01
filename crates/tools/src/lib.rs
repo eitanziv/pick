@@ -29,6 +29,7 @@ pub mod ssdp_discover;
 pub mod traffic_capture;
 pub mod util;
 pub mod web_vuln_scan;
+pub mod webwright;
 pub mod wifi_scan;
 pub mod wifi_scan_detailed;
 pub mod write_file;
@@ -75,6 +76,7 @@ pub use spawn_specialist::SpawnSpecialistTool;
 pub use ssdp_discover::SsdpDiscoverTool;
 pub use traffic_capture::TrafficCaptureTool;
 pub use web_vuln_scan::WebVulnScanTool;
+pub use webwright::WebwrightTool;
 pub use wifi_scan::WifiScanTool;
 pub use wifi_scan_detailed::WifiScanDetailedTool;
 pub use write_file::WriteFileTool;
@@ -228,6 +230,9 @@ pub fn create_tool_registry() -> ToolRegistry {
     // Automated toolchains
     registry.register(WebAppToolchain::new());
 
+    // Browser automation (AI-driven)
+    registry.register(WebwrightTool);
+
     registry
 }
 
@@ -245,4 +250,42 @@ pub fn create_action_registry() -> registry::QuickActionRegistry {
     let mut registry = registry::QuickActionRegistry::new();
     registry::register_all_actions(&mut registry);
     registry
+}
+
+#[cfg(test)]
+mod webwright_tests {
+    use super::*;
+
+    #[test]
+    fn webwright_registered_in_tool_registry() {
+        let registry = create_tool_registry();
+        assert!(
+            registry.get("webwright").is_some(),
+            "webwright tool not found in registry"
+        );
+    }
+
+    #[test]
+    fn webwright_schema_has_required_params() {
+        let registry = create_tool_registry();
+        let tool = registry.get("webwright").unwrap();
+        let schema = tool.schema();
+        let param_names: Vec<&str> = schema.params.iter().map(|p| p.name.as_str()).collect();
+        assert!(param_names.contains(&"mode"));
+        assert!(param_names.contains(&"start_url"));
+        assert!(param_names.contains(&"task"));
+        assert!(param_names.contains(&"script"));
+        assert!(param_names.contains(&"max_steps"));
+        assert!(param_names.contains(&"timeout"));
+    }
+
+    #[test]
+    fn webwright_schema_exports_to_json() {
+        let registry = create_tool_registry();
+        let tool = registry.get("webwright").unwrap();
+        let json_schema = tool.schema().to_json_schema();
+        assert_eq!(json_schema["name"], "webwright");
+        assert!(json_schema["parameters"]["properties"]["mode"].is_object());
+        assert!(json_schema["parameters"]["properties"]["start_url"].is_object());
+    }
 }
