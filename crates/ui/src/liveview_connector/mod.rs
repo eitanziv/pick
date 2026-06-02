@@ -62,9 +62,9 @@ use strike48_connector::{
     PayloadEncoding,
 };
 use strike48_proto::proto::{
-    stream_message::Message, ConnectorCapabilities, RegisterConnectorRequest, StreamMessage,
-    WebSocketCloseRequest, WebSocketFrame, WebSocketFrameType, WebSocketOpenRequest,
-    WebSocketOpenResponse,
+    stream_message::Message, ConnectorCapabilities, InstanceMetadata, RegisterConnectorRequest,
+    StreamMessage, WebSocketCloseRequest, WebSocketFrame, WebSocketFrameType,
+    WebSocketOpenRequest, WebSocketOpenResponse,
 };
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
@@ -1086,12 +1086,30 @@ impl LiveViewConnector {
             jwt_token: self.config.auth_token.clone(),
             session_token: String::new(),
             scope: 0,
-            instance_metadata: None,
+            instance_metadata: Some(InstanceMetadata {
+                display_name: String::new(),
+                tags: vec![],
+                metadata: Self::collect_host_interfaces(),
+            }),
         };
 
         StreamMessage {
             message: Some(Message::RegisterRequest(register_request)),
         }
+    }
+
+    /// Collect all local IPv4 addresses for infrastructure self-exclusion.
+    /// Reported to Matrix Studio via instance_metadata so the orchestrator can
+    /// exclude this connector's host from engagement scanning.
+    fn collect_host_interfaces() -> HashMap<String, String> {
+        let mut metadata = HashMap::new();
+
+        if let Some(ips) = pentest_platform::desktop::get_local_ipv4_addresses() {
+            tracing::info!("Reporting host interfaces for exclusion: {:?}", ips);
+            metadata.insert("host_interfaces".to_string(), ips.join(","));
+        }
+
+        metadata
     }
 
     /// Run the message processing loop.
