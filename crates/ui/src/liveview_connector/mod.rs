@@ -63,8 +63,8 @@ use strike48_connector::{
 };
 use strike48_proto::proto::{
     stream_message::Message, ConnectorCapabilities, InstanceMetadata, RegisterConnectorRequest,
-    StreamMessage, WebSocketCloseRequest, WebSocketFrame, WebSocketFrameType,
-    WebSocketOpenRequest, WebSocketOpenResponse,
+    StreamMessage, WebSocketCloseRequest, WebSocketFrame, WebSocketFrameType, WebSocketOpenRequest,
+    WebSocketOpenResponse,
 };
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tokio_tungstenite::tungstenite::Message as WsMessage;

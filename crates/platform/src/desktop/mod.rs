@@ -31,7 +31,11 @@ pub fn get_local_ipv4_addresses() -> Option<Vec<String>> {
         })
         .collect();
 
-    if ips.is_empty() { None } else { Some(ips) }
+    if ips.is_empty() {
+        None
+    } else {
+        Some(ips)
+    }
 }
 
 #[cfg(not(feature = "network-interface"))]
