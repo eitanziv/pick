@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 use std::time::Duration;
 
 use super::install::ensure_tool_installed;
-use super::runner::{param_str_opt, param_str_or, CommandBuilder};
+use super::runner::{param_exclude_list, param_str_opt, param_str_or, CommandBuilder};
 use crate::provenance_support::{format_full_command, tool_version};
 use crate::util::{param_bool, param_u64};
 
@@ -45,7 +45,10 @@ impl PentestTool for NmapTool {
             .param(ToolParam::required(
                 "target",
                 ParamType::String,
-                "Target IP, hostname, or CIDR range (e.g., '192.168.1.0/24', 'example.com')",
+                "Target IP, hostname, or range. Supported range forms: CIDR ('192.168.1.0/24'), \
+                 or IPv4 dash ranges — last-octet ('10.0.0.1-50') or full-IP ('10.0.0.1-10.0.5.20'). \
+                 Prefer CIDR or a simple IP1-IP2 dash range; nmap's multi-octet form ('10.0.0-1.1-254') \
+                 is not scope-checked and may be rejected.",
             ))
             .param(ToolParam::optional(
                 "scan_type",
@@ -94,6 +97,12 @@ impl PentestTool for NmapTool {
                 ParamType::Boolean,
                 "Skip host discovery (-Pn, treat all hosts as online)",
                 json!(false),
+            ))
+            .param(ToolParam::optional(
+                "exclude",
+                ParamType::Array,
+                "Hosts/CIDRs to exclude from the scan (maps to nmap --exclude). Use this to scan a range while skipping specific hosts, e.g. target='10.0.0.0/24' exclude=['10.0.0.1','10.0.0.2']. Out-of-scope hosts are also injected here automatically by the platform.",
+                json!([]),
             ))
             .param(ToolParam::optional(
                 "timeout",
@@ -229,6 +238,12 @@ impl PentestTool for NmapTool {
 
                     builder = builder.arg("--script", &scripts);
                 }
+            }
+
+            // Exclude list (issue #2524): out-of-scope hosts the scan must skip.
+            // Validated as IP/CIDR/hostname to prevent injection via this param.
+            if let Some(exclude) = param_exclude_list(&params, "exclude")? {
+                builder = builder.arg("--exclude", &exclude);
             }
 
             // Output format: XML for parsing
@@ -834,6 +849,47 @@ mod tests {
         assert!("smb-*".contains('*'));
         assert!("http-?".contains('?'));
         assert!("smb-vuln-*".contains('*'));
+    }
+
+    // ========================================
+    // Tests for the --exclude wiring (issue #2524)
+    // ========================================
+    //
+    // execute() builds the command inline; these tests replicate the exact
+    // `param_exclude_list` + `CommandBuilder.arg("--exclude", ...)` composition
+    // it uses, so a regression in the wiring (dropped flag, wrong join, emitted
+    // when empty) is caught without standing up a mock platform.
+
+    fn build_exclude_args(params: &serde_json::Value) -> Vec<String> {
+        let mut builder = CommandBuilder::new();
+        if let Some(exclude) =
+            super::super::runner::param_exclude_list(params, "exclude").expect("valid exclude")
+        {
+            builder = builder.arg("--exclude", &exclude);
+        }
+        builder.positional("10.0.0.0/24").build()
+    }
+
+    #[test]
+    fn exclude_array_produces_exclude_flag() {
+        let params = serde_json::json!({"exclude": ["10.0.0.1", "10.0.0.2"]});
+        let args = build_exclude_args(&params);
+        assert_eq!(args, vec!["--exclude", "10.0.0.1,10.0.0.2", "10.0.0.0/24"]);
+    }
+
+    #[test]
+    fn absent_exclude_produces_no_flag() {
+        let params = serde_json::json!({"target": "10.0.0.0/24"});
+        let args = build_exclude_args(&params);
+        assert_eq!(args, vec!["10.0.0.0/24"]);
+        assert!(!args.iter().any(|a| a == "--exclude"));
+    }
+
+    #[test]
+    fn empty_exclude_array_produces_no_flag() {
+        let params = serde_json::json!({"exclude": []});
+        let args = build_exclude_args(&params);
+        assert!(!args.iter().any(|a| a == "--exclude"));
     }
 
     #[test]
